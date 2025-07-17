@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "start": "nodemon run index.js",
-    "dev": "nodemon --watch index.ts --exec bun run index.ts"
+    "dev": "bun --watch index.js"
   },
   "devDependencies": {
     "@types/bun": "latest",
