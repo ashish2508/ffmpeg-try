@@ -1,28 +1,102 @@
-import { Elysia } from 'elysia';
 import { cors } from '@elysiajs/cors';
+import serveStatic from '@elysiajs/static'
+import { exec } from "child_process";
+import { Elysia, t } from 'elysia';
+import path from "path";
+import { v4 as uuidv4 } from "uuid";
 
-const app = new Elysia() 
+const UPLOADS_URL = '/uploads';
+const UPLOADS_DIR = './uploads';
+const COURSES_DIR = `${UPLOADS_DIR}/courses`;
+
+const app = new Elysia()
     .use(
         cors({
-            origin: ["http://localhost:3000", "http://localhost:5173"],
+            origin: "*",
             credentials: true
         })
     )
-    .onRequest(({ set }) => {
-        set.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000';
-        set.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
-        set.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization';
-    })
     .get('/', () => 'Hello World!')
-      .get('/ashishjha', () => {
-        return Response.redirect('https://ashishjha.tech', 302); 
-    })
-    
-    .get('/user/:id', ({ params: { id } }) => id)
-    .post('/form', ({ body }) => body)
+    .get('/ashishjha', () =>
+        new Response('', {
+            status: 302,
+            headers: { Location: 'https://ashishjha.tech' }
+        })
+    )
+    .get('/user/:id', ({ params }) => params.id)
+    .post('/form', ({ body }) => body, { type: 'urlencoded' })
+    .use(
+        serveStatic({
+            prefix: UPLOADS_URL,
+            assets: UPLOADS_DIR
+        })
+    )
+    .post(
+        "/upload",
+        async ({ body, set }) => {
+            const file = body.file;
+            const extension = path.extname(file.name);
+            const lessonId = uuidv4();
+
+            const originVideoPath = `${UPLOADS_DIR}/${lessonId}${extension}`;
+
+            // HLS output directory and playlist file
+            const outputDir = `${COURSES_DIR}/${lessonId}`;
+            const hlsPath = `${outputDir}/index.m3u8`;
+
+            const fs = await import("fs/promises");
+            await fs.mkdir(outputDir, { recursive: true });
+
+            // Write the uploaded video file
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+            await fs.writeFile(originVideoPath, buffer);
+            console.log(`File uploaded: ${originVideoPath}`);
+
+            const ffmpegCommand = `ffmpeg -i "${originVideoPath}" -codec:v libx264 -profile:v baseline -level 3.0 -maxrate 1500k -bufsize 3000k -preset fast -b:v 1200k -codec:a aac -ac 2 -ar 48000 -b:a 128k -hls_time 2 -g 48 -keyint_min 48 -hls_playlist_type vod -hls_segment_filename "${outputDir}/segment%03d.ts" -start_number 0 "${hlsPath}"`;
+
+
+            function execAsync(cmd) {
+                return new Promise((resolve, reject) => {
+                    exec(cmd, (error, stdout, stderr) => {
+                        if (stdout) console.log('FFmpeg stdout:', stdout);
+                        if (stderr) console.log('FFmpeg stderr:', stderr);
+                        if (error) {
+                            console.log('FFmpeg error:', error);
+                            reject(error);
+                        }
+                         else {
+                            console.log('FFmpeg done.');
+                            resolve();
+                        }
+                    });
+                });
+            }
+
+            try {
+                await execAsync(ffmpegCommand);
+                await fs.unlink(originVideoPath);
+                const videoUrl = `http://localhost:8000/uploads/courses/${lessonId}/index.m3u8`;
+                return {
+                    success: true,
+                    lessonId: lessonId,
+                    url: videoUrl
+                };
+            } catch (error) {
+                set.status = 500;
+                return { success: false, error: 'FFmpeg failed', details: String(error) };
+            }
+        },
+        {
+            body: t.Object({
+                file: t.File(),
+            }),
+            type: "formdata",
+        }
+    )
     .onError(({ code }) => {
-        if (code === 'NOT_FOUND') return 'Route not found :('
+        if (code === 'NOT_FOUND') return 'Route not found :(';
     })
     .listen(8000);
 
-app.handle(new Request('http://localhost/')).then(console.log)
+console.log('listening on http://localhost:8000');

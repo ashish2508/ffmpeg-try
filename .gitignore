@@ -1,4 +1,6 @@
 # dependencies (bun install)
+*.mp4
+*/courses
 node_modules
 
 # output
