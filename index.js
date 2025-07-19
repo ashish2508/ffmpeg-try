@@ -45,7 +45,7 @@ const app = new Elysia()
 
       const fs = await import("fs/promises");
       await fs.mkdir(outputDir, { recursive: true });
-
+ 
       // Write the uploaded video file
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -54,7 +54,7 @@ const app = new Elysia()
 
       const ffmpegCommand = `ffmpeg -i "${originVideoPath}" -codec:v libx264 -profile:v baseline -level 3.0 -maxrate 1500k -bufsize 3000k -preset fast -b:v 1200k -codec:a aac -ac 2 -ar 48000 -b:a 128k -hls_time 2 -g 48 -keyint_min 48 -hls_playlist_type vod -hls_segment_filename "${outputDir}/segment%03d.ts" -start_number 0 "${hlsPath}"`;
 
-
+//just trying not really for deployment 
       function execAsync(cmd) {
         return new Promise((resolve, reject) => {
           exec(cmd, (error, stdout, stderr) => {
